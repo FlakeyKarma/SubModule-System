@@ -1,8 +1,11 @@
-#!/bin/python3
+#!/usr/bin/env python3
+
 from os import listdir,\
         path as PATH
 from sys import path
 from hashlib import sha256
+import sys
+import csv
 
 def print_error(errorString):
     print(errorString)
@@ -28,12 +31,18 @@ def hash_file(file_path):
     Object to run all SuMoS functions
 '''
 class SUMOS:
-    def __init__(self, SMSPath):
-        #Path to find plugin configs
-        self.SMSPath = SMSPath
-        #Plugin information from configs
-        self.SMSPlugins = {}
-        #Validate all fields are full
+    def __init__(self, base):
+        #   Path to find plugin detail CSV
+        self.SMSPath = base
+        #   Plugin information from configs
+        self.SMSPlugins = []
+        #   Imported modules
+        self.SMSImported = []
+        #   Running modules
+        self.SMSRunning = []
+        #   CSV Path
+        self.module_csv = f"{self.SMSPath}/listing.csv"
+        #   Validate all fields are full
         self.fields = [
             #Name of plugin
             'NAME',
@@ -52,67 +61,94 @@ class SUMOS:
             #Interpreter (optional)
             'INTP'
         ]
-        #Select all .cfg files in the SMSPath variable
-        for config in listdir("%s/configs" % self.SMSPath):
-            if config.endswith('.cfg'):
-                #Create a hashtable that exists to said plugin configuration file
-                self.SMSPlugins[config] = {}
-                configPath = "%s/configs/%s" % (self.SMSPath, config) 
-                with open(configPath, 'r') as config_file:
-                    #Object with array of each line within config file
-                    txt = config_file.read().split("\n")
-                    self.SMSPlugins[config]['CONFIG_PATH'] = "%s/configs" % configPath
-                    for line in txt:
-                        if line == '':
-                            continue
-                        split_content = line.split(':')
-                        #Fill hashtable object
-                        if split_content[0] == 'PATH':
-                            self.SMSPlugins[config][split_content[0]] = split_content[1].replace('\\', '/') if '\\' in list(split_content[1]) else split_content[1]
-                        else:
-                            self.SMSPlugins[config][split_content[0]] = split_content[1]
+        self.Preview()
 
+
+    '''
+        Preview module metadata
+    '''
+    def Preview(self):
+        #raw_modules = []
+        headers = []
+        with open(self.module_csv, newline='') as c:
+            full = csv.reader(c, delimiter=',', quotechar='"')
+            for i,line in enumerate(full):
+                raw_module = {}
+                if i:
+                    for j,attribute in enumerate(line):
+                        raw_module[headers[j]] = attribute
+                    self.SMSPlugins.append(raw_module)
+
+                else:
+                    headers = line
 
     '''
         Call on selected plugin
     '''
-    def Call(self, module_name, arguments=None):
-        plugin = self.SMSPlugins[module_name]
-        path.insert(0, "%s/plugins/%s" % (self.SMSPath, plugin['PATH']))
-        #File is named 'main' in plugin's path
-        imported_module = __import__('main')
-        imported_module.run()
+    def Call(self, plugin, arguments=None):
+        if [present_plugin for present_plugin in self.SMSPlugins if present_plugin['Name'] == plugin['Name']] == []:
+            print(f"ERROR: '{plugin['Name']}' not imported.")
+        else:
+            self.SMSRunning.append(plugin['Name'])
+            imported_module = [mod for mod in self.SMSImported if mod['Name'] == plugin['Name']][0]['Module']
+            imported_module.run()
+
+    '''
+        Import selected plugin
+    '''
+    def Import(self, plugin):
+        path.insert(0, "%s/plugins/%s" % (self.SMSPath, plugin['Path']))
+        new_module = {
+                    'Name':plugin['Name'],
+                    'Module':__import__(plugin['Path'])
+                }
+        self.SMSImported.append(new_module)
+
+    '''
+        Remove module from RAM
+    '''
+    def Remove(self, plugin):
+        sys.modules.pop(plugin['Path'])
+        module = [mod for mod in self.SMSImported if mod['Name'] == plugin['Name']][0]
+        self.SMSImported.remove(module)
 
     '''
         List plugin details
     '''
-    def List(self):
-        for config in self.SMSPlugins.keys():
-            plugin = self.SMSPlugins[config]
-            print("%s:\n\t- %s\n\t- %s" % (plugin['NAME'], plugin['DESC'], plugin['PATH']))
+    def List(self, plugin=None):
+        all_plugins = [plugin] if plugin else self.SMSPlugins
+
+        for plugin in all_plugins:
+            print("(%s) %s\t- %s" % (plugin['Path'], plugin['Name'], plugin['Description']))
 
     '''
-        Validate plugins based on .cfg files
+        Check for issues pertaining to plugins
     '''
     def Check(self, plugin=None):
-        all_plugins = plugin if plugin is not None else self.SMSPlugins.keys()
+        all_plugins = [plugin] if plugin else self.SMSPlugins
 
-        for config in all_plugins:
-            for field in self.fields:
-                if field != 'INTP':
-                    if self.SMSPlugins[config][field] is None or self.SMSPlugins[config][field] == '':
+        for plugin in all_plugins:
+            for field in plugin.keys():
+                if field != 'Interpreter':
+                    if plugin[field] is None:
                         print_error("Error: '%s' from '%s' does not exist." % (field, config))
 
 
-            pluginPath = "%s/plugins/%s" % (self.SMSPath, self.SMSPlugins[config]['PATH'])
+            pluginPath = "%s/plugins/%s" % (self.SMSPath, plugin['Path'])
 
             #Check if plugin file exists
             if not PATH.exists(pluginPath):
-                print_error("Error: '%s' from '%s' does not exist." % (pluginPath, config))
+                print_error("Error: '%s' from '%s' does not exist." % (pluginPath, plugin['Path']))
 
             #Check if SHA256 matches plugin
-            stated_hash = self.SMSPlugins[config]['CHCK']
-            plugin_hash = hash_file("%s/main.py" % pluginPath)
-            
+            stated_hash = plugin['SHA256']
+            plugin_hash = hash_file(f"{pluginPath}/{plugin['Path']}.py")
+
             if stated_hash != plugin_hash:
                 print_error("Error: Check validitiy. Config file hash is '%s', actual hash is '%s' does not exist." % (stated_hash, plugin_hash))
+
+    '''
+        Return specific plugin, queried by 'Path'
+    '''
+    def Query(self, path):
+        return [plugin for plugin in self.SMSPlugins if plugin['Path'] == path][0]
