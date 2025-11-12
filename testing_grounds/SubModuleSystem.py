@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 from os import listdir,\
-        path as PATH
+        path as PATH,\
+        chdir as cd
 from sys import path
 from hashlib import sha256
 import sys
 import csv
+import threading
 
 def print_error(errorString):
     print(errorString)
@@ -83,15 +85,27 @@ class SUMOS:
                     headers = line
 
     '''
+        Execute
+    '''
+    def Execute(self, plugin):
+            imported_module = [mod for mod in self.SMSImported if mod['Name'] == plugin['Name']][0]['Module']
+            cd(f"{self.SMSPath}/plugins/{plugin['Path']}")
+            imported_module.run()
+
+
+    '''
         Call on selected plugin
     '''
     def Call(self, plugin, arguments=None):
         if [present_plugin for present_plugin in self.SMSPlugins if present_plugin['Name'] == plugin['Name']] == []:
             print(f"ERROR: '{plugin['Name']}' not imported.")
         else:
-            self.SMSRunning.append(plugin['Name'])
-            imported_module = [mod for mod in self.SMSImported if mod['Name'] == plugin['Name']][0]['Module']
-            imported_module.run()
+            new_process = {
+                        'Name': plugin['Name'],
+                        'Process':threading.Thread(target=self.Execute, args=(plugin,))
+                    }
+            new_process['Process'].start()
+            self.SMSRunning.append(new_process)
 
     '''
         Import selected plugin
@@ -151,4 +165,6 @@ class SUMOS:
         Return specific plugin, queried by 'Path'
     '''
     def Query(self, path):
-        return [plugin for plugin in self.SMSPlugins if plugin['Path'] == path][0]
+        all_plugins = [plugin for plugin in self.SMSPlugins if plugin['Path'] == path]
+        print(all_plugins)
+        return all_plugins[0]
