@@ -2,7 +2,9 @@
 
 from os import listdir,\
         path as PATH,\
-        chdir as cd
+        chdir as cd,\
+        getcwd as pwd,\
+        system
 from sys import path
 from hashlib import sha256
 import sys
@@ -70,7 +72,6 @@ class SUMOS:
         Preview module metadata
     '''
     def Preview(self):
-        #raw_modules = []
         headers = []
         with open(self.module_csv, newline='') as c:
             full = csv.reader(c, delimiter=',', quotechar='"')
@@ -88,10 +89,12 @@ class SUMOS:
         Execute
     '''
     def Execute(self, plugin):
-            imported_module = [mod for mod in self.SMSImported if mod['Name'] == plugin['Name']][0]['Module']
+        if int(plugin['Standalone']):
             cd(f"{self.SMSPath}/plugins/{plugin['Path']}")
+            system(f"{plugin['Interpreter']} {plugin['Path']}.py")
+        else:
+            imported_module = [mod for mod in self.SMSImported if mod['Name'] == plugin['Name']][0]['Module']
             imported_module.run()
-
 
     '''
         Call on selected plugin
@@ -111,10 +114,11 @@ class SUMOS:
         Import selected plugin
     '''
     def Import(self, plugin):
-        path.insert(0, "%s/plugins/%s" % (self.SMSPath, plugin['Path']))
+        cd(f"{self.SMSPath}/plugins/{plugin['Path']}")
+        path.insert(0, f"{self.SMSPath}/plugins/{plugin['Path']}")
         new_module = {
                     'Name':plugin['Name'],
-                    'Module':__import__(plugin['Path'])
+                    'Module':None if int(plugin['Standalone']) else __import__(plugin['Path'])
                 }
         self.SMSImported.append(new_module)
 
@@ -122,7 +126,11 @@ class SUMOS:
         Remove module from RAM
     '''
     def Remove(self, plugin):
-        sys.modules.pop(plugin['Path'])
+        if int(plugin['Standalone']):
+            A = None
+        else:
+            sys.modules.pop(plugin['Path'])
+
         module = [mod for mod in self.SMSImported if mod['Name'] == plugin['Name']][0]
         self.SMSImported.remove(module)
 
@@ -164,7 +172,6 @@ class SUMOS:
     '''
         Return specific plugin, queried by 'Path'
     '''
-    def Query(self, path):
-        all_plugins = [plugin for plugin in self.SMSPlugins if plugin['Path'] == path]
-        print(all_plugins)
+    def Query(self, plugin):
+        all_plugins = [plugin for plugin in self.SMSPlugins if plugin['Path'] == plugin['Path']]
         return all_plugins[0]
