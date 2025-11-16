@@ -72,6 +72,7 @@ class SUMOS:
         Preview module metadata
     '''
     def Preview(self):
+        #raw_modules = []
         headers = []
         with open(self.module_csv, newline='') as c:
             full = csv.reader(c, delimiter=',', quotechar='"')
